@@ -1,0 +1,12 @@
+{% extends 'base.html' %}{% block title %}My Progress{% endblock %}{% block content %}
+<h1 class="text-2xl font-display font-bold text-brand-700 mb-2">My Progress</h1>
+<div class="grid sm:grid-cols-3 gap-4 mb-6">
+<div class="bg-white rounded-xl p-5 shadow-sm text-center"><p class="text-3xl font-bold text-brand-600">{{ overall_avg|floatformat:1 }}%</p><p class="text-gray-500 text-sm">Overall Average</p></div>
+<div class="bg-white rounded-xl p-5 shadow-sm text-center"><p class="text-3xl font-bold text-green-600">{{ total_quizzes }}</p><p class="text-gray-500 text-sm">Quizzes Taken</p></div>
+<div class="bg-white rounded-xl p-5 shadow-sm text-center"><p class="text-3xl font-bold text-amber-600">{{ total_practice }}</p><p class="text-gray-500 text-sm">CE Practice Sessions</p></div></div>
+<h2 class="text-lg font-bold text-brand-600 mb-3">Performance by Subject</h2>
+<div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6"><table class="w-full text-sm"><thead class="bg-brand-700 text-white"><tr><th class="px-4 py-2 text-left">Subject</th><th class="px-4 py-2">Quiz Avg</th><th class="px-4 py-2">CE Practice Avg</th><th class="px-4 py-2">Quizzes</th></tr></thead><tbody>{% for s in subject_scores %}<tr class="border-b border-gray-100"><td class="px-4 py-2 font-semibold">{{ s.subject.name }}</td><td class="px-4 py-2 text-center {% if s.quiz_avg >= 70 %}text-green-600{% elif s.quiz_avg >= 50 %}text-amber-600{% else %}text-red-600{% endif %} font-bold">{{ s.quiz_avg }}%</td><td class="px-4 py-2 text-center {% if s.practice_avg >= 70 %}text-green-600{% elif s.practice_avg >= 50 %}text-amber-600{% else %}text-red-600{% endif %} font-bold">{{ s.practice_avg }}%</td><td class="px-4 py-2 text-center text-gray-400">{{ s.quiz_count }}</td></tr>{% endfor %}</tbody></table></div>
+<div class="bg-white rounded-xl shadow-sm p-5 mb-6"><canvas id="progressChart" height="100"></canvas></div>
+{% endblock %}{% block extra_scripts %}<script>
+fetch('{% url "chart_data_self" %}').then(r=>r.json()).then(d=>{new Chart(document.getElementById('progressChart'),{type:'line',data:{labels:d.quiz_labels,datasets:[{label:'Quiz Scores',data:d.quiz_scores,borderColor:'#2B6B8A',tension:0.3,fill:false},{label:'CE Practice',data:d.practice_scores,borderColor:'#B8860B',tension:0.3,fill:false}]},options:{responsive:true,scales:{y:{beginAtZero:true,max:100}}}})});
+</script>{% endblock %}

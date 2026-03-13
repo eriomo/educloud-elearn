@@ -1,0 +1,10 @@
+{% extends 'base.html' %}{% block title %}Admin Dashboard{% endblock %}{% block content %}
+<div class="mb-6"><h1 class="text-2xl font-display font-bold text-brand-700">Administrator Dashboard</h1></div>
+<div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+<div class="bg-white rounded-xl p-5 shadow-sm border-l-4 border-brand-500"><p class="text-3xl font-bold text-brand-700">{{ total_pupils }}</p><p class="text-gray-500 text-sm">Pupils</p></div>
+<div class="bg-white rounded-xl p-5 shadow-sm border-l-4 border-green-500"><p class="text-3xl font-bold text-green-700">{{ total_teachers }}</p><p class="text-gray-500 text-sm">Teachers</p></div>
+<div class="bg-white rounded-xl p-5 shadow-sm border-l-4 border-amber-500"><p class="text-3xl font-bold text-amber-700">{{ total_lessons }}</p><p class="text-gray-500 text-sm">Lessons</p></div>
+<div class="bg-white rounded-xl p-5 shadow-sm border-l-4 border-purple-500"><p class="text-3xl font-bold text-purple-700">{{ total_questions }}</p><p class="text-gray-500 text-sm">CE Questions</p></div></div>
+<div class="grid sm:grid-cols-3 gap-4"><a href="{% url 'manage_users' %}" class="bg-brand-700 text-white rounded-xl p-5 hover:bg-brand-600 text-center"><h3 class="font-bold">Manage Users</h3></a>
+<a href="{% url 'progress_overview' %}" class="bg-brand-500 text-white rounded-xl p-5 hover:bg-brand-400 text-center"><h3 class="font-bold">Class Analytics</h3></a>
+<a href="/admin/" class="bg-gray-700 text-white rounded-xl p-5 hover:bg-gray-600 text-center"><h3 class="font-bold">Django Admin</h3></a></div>{% endblock %}

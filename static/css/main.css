@@ -1,0 +1,6 @@
+/* EduCloud — Cloud-Based E-Learning System */
+* { box-sizing: border-box; }
+.nav-link { transition: color 0.15s; }
+.nav-link:hover { color: #AED6F1; }
+.form-input { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #d1d5db; border-radius: 0.5rem; font-size: 0.875rem; }
+.form-input:focus { outline: none; border-color: #2B6B8A; box-shadow: 0 0 0 3px rgba(43, 107, 138, 0.1); }

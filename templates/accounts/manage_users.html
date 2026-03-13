@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% block title %}Manage Users{% endblock %}{% block content %}
+<h1 class="text-2xl font-display font-bold text-brand-700 mb-6">Manage Users</h1>
+<div class="grid lg:grid-cols-3 gap-6">
+<div class="bg-white rounded-xl shadow-sm p-6"><h2 class="font-bold text-brand-700 mb-4">Create New User</h2>
+<form method="post" class="space-y-3">{% csrf_token %}
+<input name="username" placeholder="Username" required class="w-full px-3 py-2 border rounded-lg text-sm">
+<input name="first_name" placeholder="First Name" class="w-full px-3 py-2 border rounded-lg text-sm">
+<input name="last_name" placeholder="Last Name" class="w-full px-3 py-2 border rounded-lg text-sm">
+<input name="email" placeholder="Email" type="email" class="w-full px-3 py-2 border rounded-lg text-sm">
+<select name="role" class="w-full px-3 py-2 border rounded-lg text-sm"><option value="pupil">Pupil</option><option value="teacher">Teacher</option><option value="parent">Parent</option><option value="admin">Admin</option></select>
+<input name="class_level" type="number" min="1" max="6" placeholder="Class Level (1-6)" class="w-full px-3 py-2 border rounded-lg text-sm">
+<input name="password" type="password" placeholder="Password" required class="w-full px-3 py-2 border rounded-lg text-sm">
+<button type="submit" class="w-full bg-brand-500 text-white py-2 rounded-lg font-semibold hover:bg-brand-600">Create User</button></form></div>
+<div class="lg:col-span-2 bg-white rounded-xl shadow-sm overflow-hidden"><table class="w-full text-sm"><thead class="bg-brand-700 text-white"><tr><th class="px-4 py-2 text-left">Name</th><th class="px-4 py-2">Role</th><th class="px-4 py-2">Class</th><th class="px-4 py-2">Username</th></tr></thead><tbody>{% for u in users %}<tr class="border-b border-gray-100"><td class="px-4 py-2">{{ u.get_full_name }}</td><td class="px-4 py-2 text-center"><span class="px-2 py-1 rounded-full text-xs {% if u.role == 'admin' %}bg-purple-100 text-purple-700{% elif u.role == 'teacher' %}bg-green-100 text-green-700{% elif u.role == 'parent' %}bg-amber-100 text-amber-700{% else %}bg-blue-100 text-blue-700{% endif %}">{{ u.get_role_display }}</span></td><td class="px-4 py-2 text-center">{{ u.class_level|default:"—" }}</td><td class="px-4 py-2 text-center text-gray-400">{{ u.username }}</td></tr>{% endfor %}</tbody></table></div></div>{% endblock %}

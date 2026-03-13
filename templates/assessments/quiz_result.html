@@ -1,0 +1,9 @@
+{% extends 'base.html' %}{% block title %}Quiz Result{% endblock %}{% block content %}
+<div class="bg-white rounded-xl shadow-sm p-6 mb-6 text-center"><h1 class="text-2xl font-display font-bold text-brand-700 mb-2">{{ result.quiz.title }}</h1>
+<div class="text-6xl font-bold my-4 {% if result.score >= 70 %}text-green-600{% elif result.score >= 50 %}text-amber-600{% else %}text-red-600{% endif %}">{{ result.score }}%</div>
+<p class="text-gray-500">{{ result.correct_answers }} out of {{ result.total_questions }} correct</p></div>
+<h2 class="text-lg font-bold text-brand-600 mb-3">Review Answers</h2>
+{% for q in questions %}<div class="bg-white rounded-xl shadow-sm p-5 mb-3 border-l-4 {% if result.answers_json|dictsort:q.id %}{% with ans=result.answers_json %}{% if ans|length > 0 %}border-gray-300{% endif %}{% endwith %}{% endif %}">
+<p class="font-bold text-brand-700 mb-2">Q{{ forloop.counter }}. {{ q.question_text }}</p>
+<p class="text-sm text-green-700">Correct: {{ q.correct_option }} — {% if q.correct_option == 'A' %}{{ q.option_a }}{% elif q.correct_option == 'B' %}{{ q.option_b }}{% elif q.correct_option == 'C' %}{{ q.option_c }}{% else %}{{ q.option_d }}{% endif %}</p></div>{% endfor %}
+<a href="{% url 'dashboard' %}" class="inline-block bg-brand-500 text-white px-6 py-2 rounded-lg mt-4 hover:bg-brand-600">Back to Dashboard</a>{% endblock %}

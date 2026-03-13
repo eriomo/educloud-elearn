@@ -1,0 +1,3 @@
+{% extends 'base.html' %}{% block title %}Subjects{% endblock %}{% block content %}
+<h1 class="text-2xl font-display font-bold text-brand-700 mb-6">Subjects</h1>
+<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">{% for subject in subjects %}<a href="{% url 'lesson_list' subject.id %}" class="bg-white rounded-xl p-6 shadow-sm hover:shadow-md transition border-t-4 text-center group" style="border-color:{{ subject.color }}"><div class="text-4xl mb-3">📘</div><h3 class="font-bold text-brand-700">{{ subject.name }}</h3><p class="text-xs text-gray-400 mt-1">P{{ subject.class_level }} &bull; {{ subject.lessons.count }} lessons</p></a>{% empty %}<p class="text-gray-400 col-span-full text-center py-8">No subjects available.</p>{% endfor %}</div>{% endblock %}
