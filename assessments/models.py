@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from lessons.models import Subject, Lesson
 
+
 class Quiz(models.Model):
     lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, related_name='quizzes')
     title = models.CharField(max_length=200)
@@ -47,6 +48,7 @@ class QuizResult(models.Model):
     total_questions = models.PositiveIntegerField()
     correct_answers = models.PositiveIntegerField()
     answers_json = models.JSONField(default=dict, blank=True)
+    ai_feedback = models.JSONField(default=dict, blank=True)
     date_taken = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -60,10 +62,8 @@ class QuizResult(models.Model):
         return round((self.correct_answers / self.total_questions) * 100, 1) if self.total_questions else 0
 
 
-# ── Common Entrance Past Questions ────────────────────────
 class CEQuestion(models.Model):
     DIFFICULTY_CHOICES = [('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')]
-
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='ce_questions')
     exam_year = models.PositiveIntegerField()
     question_text = models.TextField()
@@ -90,6 +90,7 @@ class PracticeResult(models.Model):
     total_questions = models.PositiveIntegerField()
     correct_answers = models.PositiveIntegerField()
     answers_json = models.JSONField(default=dict, blank=True)
+    ai_feedback = models.JSONField(default=dict, blank=True)
     date_attempted = models.DateTimeField(auto_now_add=True)
 
     class Meta:
