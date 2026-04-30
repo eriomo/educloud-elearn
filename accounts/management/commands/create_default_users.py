@@ -46,21 +46,17 @@ DEFAULT_USERS = [
 
 
 class Command(BaseCommand):
-    help = 'Creates default users if they do not exist'
+    help = 'Creates or updates default users'
 
     def handle(self, *args, **kwargs):
         for user_data in DEFAULT_USERS:
             username = user_data['username']
-            if not User.objects.filter(username=username).exists():
-                user = User.objects.create_user(
-                    username=username,
-                    password=user_data['password'],
-                    email=user_data.get('email', ''),
-                    role=user_data.get('role', 'pupil'),
-                )
-                user.is_superuser = user_data.get('is_superuser', False)
-                user.is_staff = user_data.get('is_staff', False)
-                user.save()
-                self.stdout.write(f'Created user: {username}')
-            else:
-                self.stdout.write(f'Already exists: {username}')
+            user, created = User.objects.get_or_create(username=username)
+            user.set_password(user_data['password'])
+            user.email = user_data.get('email', '')
+            user.role = user_data.get('role', 'pupil')
+            user.is_superuser = user_data.get('is_superuser', False)
+            user.is_staff = user_data.get('is_staff', False)
+            user.save()
+            status = 'Created' if created else 'Updated'
+            self.stdout.write(f'{status}: {username}')
