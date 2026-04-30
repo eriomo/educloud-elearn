@@ -1,9 +1,111 @@
-{% extends 'base.html' %}{% block title %}Quiz Result{% endblock %}{% block content %}
-<div class="bg-white rounded-xl shadow-sm p-6 mb-6 text-center"><h1 class="text-2xl font-display font-bold text-brand-700 mb-2">{{ result.quiz.title }}</h1>
-<div class="text-6xl font-bold my-4 {% if result.score >= 70 %}text-green-600{% elif result.score >= 50 %}text-amber-600{% else %}text-red-600{% endif %}">{{ result.score }}%</div>
-<p class="text-gray-500">{{ result.correct_answers }} out of {{ result.total_questions }} correct</p></div>
-<h2 class="text-lg font-bold text-brand-600 mb-3">Review Answers</h2>
-{% for q in questions %}<div class="bg-white rounded-xl shadow-sm p-5 mb-3 border-l-4 {% if result.answers_json|dictsort:q.id %}{% with ans=result.answers_json %}{% if ans|length > 0 %}border-gray-300{% endif %}{% endwith %}{% endif %}">
-<p class="font-bold text-brand-700 mb-2">Q{{ forloop.counter }}. {{ q.question_text }}</p>
-<p class="text-sm text-green-700">Correct: {{ q.correct_option }} — {% if q.correct_option == 'A' %}{{ q.option_a }}{% elif q.correct_option == 'B' %}{{ q.option_b }}{% elif q.correct_option == 'C' %}{{ q.option_c }}{% else %}{{ q.option_d }}{% endif %}</p></div>{% endfor %}
-<a href="{% url 'dashboard' %}" class="inline-block bg-brand-500 text-white px-6 py-2 rounded-lg mt-4 hover:bg-brand-600">Back to Dashboard</a>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Quiz Result{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto py-8 px-4">
+
+  <div class="bg-white rounded-2xl shadow p-6 mb-6 text-center">
+    <h1 class="text-2xl font-bold text-gray-800 mb-1">{{ result.quiz.title }}</h1>
+    <p class="text-gray-500 mb-4">{{ result.date_taken|date:"d M Y, H:i" }}</p>
+    <div class="text-6xl font-extrabold {% if result.score >= 70 %}text-green-500{% elif result.score >= 50 %}text-yellow-500{% else %}text-red-500{% endif %}">
+      {{ result.score }}%
+    </div>
+    <p class="text-gray-600 mt-2">{{ result.correct_answers }} correct out of {{ result.total_questions }} questions</p>
+  </div>
+
+  {% if feedback %}
+  <div class="bg-indigo-50 border-l-4 border-indigo-500 rounded-xl p-5 mb-6">
+    <h2 class="text-lg font-bold text-indigo-800 mb-1">🤖 AI Tutor Verdict</h2>
+    <p class="text-indigo-700">{{ feedback.overall_verdict }}</p>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    {% if feedback.strengths %}
+    <div class="bg-green-50 border border-green-200 rounded-xl p-5">
+      <h3 class="font-bold text-green-800 mb-3">✅ Your Strengths</h3>
+      <ul class="space-y-2">
+        {% for s in feedback.strengths %}
+        <li class="text-green-700 text-sm flex items-start gap-2"><span>•</span><span>{{ s }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+    {% if feedback.weakpoints %}
+    <div class="bg-red-50 border border-red-200 rounded-xl p-5">
+      <h3 class="font-bold text-red-800 mb-3">⚠️ Areas to Improve</h3>
+      <ul class="space-y-2">
+        {% for w in feedback.weakpoints %}
+        <li class="text-red-700 text-sm flex items-start gap-2"><span>•</span><span>{{ w }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if feedback.improvement_plan %}
+  <div class="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+    <h3 class="font-bold text-gray-800 mb-4">📋 Your Study Plan</h3>
+    <div class="space-y-3">
+      {% for step in feedback.improvement_plan %}
+      <div class="flex gap-4 items-start">
+        <div class="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
+          {{ step.step }}
+        </div>
+        <div>
+          <p class="font-semibold text-gray-800">{{ step.action }}</p>
+          <p class="text-gray-500 text-sm">{{ step.detail }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if feedback.study_tips %}
+  <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-5 mb-6">
+    <h3 class="font-bold text-yellow-800 mb-3">💡 Study Tips</h3>
+    <ul class="space-y-2">
+      {% for tip in feedback.study_tips %}
+      <li class="text-yellow-700 text-sm flex items-start gap-2"><span>💬</span><span>{{ tip }}</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if feedback.encouragement %}
+  <div class="bg-purple-50 border border-purple-200 rounded-xl p-5 mb-6 text-center">
+    <p class="text-purple-700 font-medium text-lg">🌟 {{ feedback.encouragement }}</p>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <div class="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+    <h3 class="font-bold text-gray-800 mb-4">📝 Question Breakdown</h3>
+    {% for q in questions %}
+    <div class="mb-4 pb-4 border-b border-gray-100 last:border-0">
+      <p class="text-gray-800 font-medium mb-1">{{ forloop.counter }}. {{ q.question_text }}</p>
+      {% for qid, val in result.answers_json.items %}
+        {% if qid == q.id|stringformat:"s" %}
+        <p class="text-sm {% if val.is_correct %}text-green-600{% else %}text-red-500{% endif %}">
+          Your answer: <strong>{{ val.selected }}</strong>
+          {% if not val.is_correct %} — Correct: <strong>{{ val.correct }}</strong>{% endif %}
+          {% if val.is_correct %}✓{% else %}✗{% endif %}
+        </p>
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="flex gap-3">
+    <a href="{% url 'quiz_list' result.quiz.lesson.id %}" class="flex-1 text-center bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700">
+      Try Another Quiz
+    </a>
+    <a href="{% url 'dashboard' %}" class="flex-1 text-center bg-gray-100 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-200">
+      Dashboard
+    </a>
+  </div>
+
+</div>
+{% endblock %}
