@@ -1,13 +1,100 @@
+import json
 import random
+import logging
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.http import JsonResponse
+from django.conf import settings
 from .models import Quiz, Question, QuizResult, CEQuestion, PracticeResult
 from lessons.models import Subject, Lesson
 
+logger = logging.getLogger(__name__)
 
-# ── Regular Quizzes ──────────────────────────────────────
+
+def get_groq_feedback(wrong_questions, subject_name, score, total, correct):
+    try:
+        from groq import Groq
+        client = Groq(api_key=settings.GROQ_API_KEY)
+
+        mistakes_text = ""
+        for i, item in enumerate(wrong_questions, 1):
+            mistakes_text += (
+                f"\n{i}. Question: {item['question']}\n"
+                f"   Student answered: {item['student_answer']}\n"
+                f"   Correct answer: {item['correct_answer']}\n"
+            )
+
+        prompt = f"""You are an expert tutor analysing a primary school student's quiz performance.
+
+Subject: {subject_name}
+Score: {correct}/{total} ({score}%)
+
+Questions the student got WRONG:
+{mistakes_text if mistakes_text else 'None — the student got everything right!'}
+
+Respond ONLY with a valid JSON object (no markdown, no backticks) using exactly this structure:
+{{
+  "overall_verdict": "one sentence summary of performance",
+  "strengths": ["strength 1", "strength 2"],
+  "weakpoints": ["weakness topic 1", "weakness topic 2"],
+  "improvement_plan": [
+    {{"step": 1, "action": "what to do", "detail": "how to do it"}},
+    {{"step": 2, "action": "what to do", "detail": "how to do it"}},
+    {{"step": 3, "action": "what to do", "detail": "how to do it"}}
+  ],
+  "study_tips": ["tip 1", "tip 2", "tip 3"],
+  "encouragement": "a warm motivating message addressed to the student"
+}}"""
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+            max_tokens=800,
+        )
+
+        raw = response.choices[0].message.content.strip()
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        return json.loads(raw)
+
+    except Exception as e:
+        logger.error(f"Groq feedback error: {e}")
+        return {
+            "overall_verdict": f"You scored {score}% on this quiz.",
+            "strengths": ["You completed the quiz — that takes effort!"],
+            "weakpoints": ["Review the questions you missed carefully."],
+            "improvement_plan": [
+                {"step": 1, "action": "Re-read your lesson notes", "detail": "Focus on topics from the wrong answers."},
+                {"step": 2, "action": "Practice similar questions", "detail": "Try the quiz again after reviewing."},
+                {"step": 3, "action": "Ask your teacher", "detail": "Ask for help on questions you didn't understand."},
+            ],
+            "study_tips": ["Study in short focused sessions.", "Write out key facts by hand.", "Test yourself before sleeping."],
+            "encouragement": "Keep going — every attempt makes you better!",
+        }
+
+
+def build_wrong_questions(questions, answers_json, mode="quiz"):
+    wrong = []
+    if mode == "quiz":
+        for q in questions:
+            data = answers_json.get(str(q.id), {})
+            if not data.get('is_correct'):
+                wrong.append({
+                    "question": q.question_text[:200],
+                    "student_answer": data.get('selected', '—'),
+                    "correct_answer": q.correct_option,
+                })
+    else:
+        for qid, data in answers_json.items():
+            if not data.get('is_correct'):
+                wrong.append({
+                    "question": data.get('question', 'Question')[:200],
+                    "student_answer": data.get('selected', '—'),
+                    "correct_answer": data.get('correct', '—'),
+                })
+    return wrong
+
+
 @login_required
 def quiz_list(request, lesson_id):
     lesson = get_object_or_404(Lesson, id=lesson_id)
@@ -24,6 +111,7 @@ def take_quiz(request, quiz_id):
         correct = 0
         total = questions.count()
         answers = {}
+
         for q in questions:
             selected = request.POST.get(f'q_{q.id}', '')
             answers[str(q.id)] = {
@@ -35,9 +123,18 @@ def take_quiz(request, quiz_id):
                 correct += 1
 
         score = round((correct / total) * 100, 2) if total else 0
+        wrong = build_wrong_questions(questions, answers, mode="quiz")
+        subject_name = quiz.lesson.subject.name if hasattr(quiz.lesson, 'subject') else quiz.lesson.title
+        feedback = get_groq_feedback(wrong, subject_name, score, total, correct)
+
         result = QuizResult.objects.create(
-            pupil=request.user, quiz=quiz, score=score,
-            total_questions=total, correct_answers=correct, answers_json=answers,
+            pupil=request.user,
+            quiz=quiz,
+            score=score,
+            total_questions=total,
+            correct_answers=correct,
+            answers_json=answers,
+            ai_feedback=feedback,
         )
         return redirect('quiz_result', result_id=result.id)
 
@@ -48,10 +145,14 @@ def take_quiz(request, quiz_id):
 def quiz_result(request, result_id):
     result = get_object_or_404(QuizResult, id=result_id)
     questions = result.quiz.questions.all()
-    return render(request, 'assessments/quiz_result.html', {'result': result, 'questions': questions})
+    feedback = result.ai_feedback or {}
+    return render(request, 'assessments/quiz_result.html', {
+        'result': result,
+        'questions': questions,
+        'feedback': feedback,
+    })
 
 
-# ── Quiz creation (teacher) ──────────────────────────────
 @login_required
 def quiz_create(request, lesson_id):
     if not (request.user.is_teacher or request.user.is_admin):
@@ -60,7 +161,9 @@ def quiz_create(request, lesson_id):
 
     if request.method == 'POST':
         quiz = Quiz.objects.create(
-            lesson=lesson, title=request.POST.get('title', ''), created_by=request.user,
+            lesson=lesson,
+            title=request.POST.get('title', ''),
+            created_by=request.user,
         )
         idx = 0
         while f'q_text_{idx}' in request.POST:
@@ -81,7 +184,6 @@ def quiz_create(request, lesson_id):
     return render(request, 'assessments/quiz_create.html', {'lesson': lesson})
 
 
-# ── Common Entrance Practice ─────────────────────────────
 @login_required
 def ce_subject_list(request):
     subjects = Subject.objects.values('name').distinct()
@@ -105,13 +207,14 @@ def ce_practice(request):
 
     questions = list(qs)
     random.shuffle(questions)
-    questions = questions[:20]  # Max 20 per session
+    questions = questions[:20]
 
     if request.method == 'POST':
         correct = 0
         total = 0
         answers = {}
         q_ids = request.POST.getlist('question_ids')
+
         for qid in q_ids:
             q = CEQuestion.objects.filter(id=int(qid)).first()
             if not q:
@@ -130,9 +233,19 @@ def ce_practice(request):
 
         score = round((correct / total) * 100, 2) if total else 0
         subject_obj = CEQuestion.objects.filter(id=int(q_ids[0])).first().subject if q_ids else None
+        subject_label = subject_obj.name if subject_obj else 'Common Entrance'
+
+        wrong = build_wrong_questions(None, answers, mode="ce")
+        feedback = get_groq_feedback(wrong, subject_label, score, total, correct)
+
         result = PracticeResult.objects.create(
-            pupil=request.user, subject=subject_obj, score=score,
-            total_questions=total, correct_answers=correct, answers_json=answers,
+            pupil=request.user,
+            subject=subject_obj,
+            score=score,
+            total_questions=total,
+            correct_answers=correct,
+            answers_json=answers,
+            ai_feedback=feedback,
         )
         return redirect('ce_result', result_id=result.id)
 
@@ -147,10 +260,13 @@ def ce_practice(request):
 @login_required
 def ce_result(request, result_id):
     result = get_object_or_404(PracticeResult, id=result_id)
-    return render(request, 'assessments/ce_result.html', {'result': result})
+    feedback = result.ai_feedback or {}
+    return render(request, 'assessments/ce_result.html', {
+        'result': result,
+        'feedback': feedback,
+    })
 
 
-# ── CE question management (teacher/admin) ───────────────
 @login_required
 def ce_add_question(request):
     if not (request.user.is_teacher or request.user.is_admin):
