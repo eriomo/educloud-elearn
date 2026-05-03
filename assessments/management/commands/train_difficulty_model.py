@@ -1,0 +1,50 @@
+import os
+import pickle
+import numpy as np
+from django.core.management.base import BaseCommand
+from assessments.models import CEQuestion
+from assessments.ml.features import extract_features, auto_label, get_topic
+
+TRAINING_DATA = [
+    ("Express in figures: four million, fifty-five thousand, eight hundred and sixteen", "4,550,806", "4,505,816", "4,055,816", "4,005,860", 0),
+    ("State the place value of 2 in 354250.", "10", "200", "20", "100", 0),
+    ("Find the HCF of 6, 9 and 12.", "3", "5", "7", "2", 0),
+    ("How many seconds are there in 8 minutes 12 seconds?", "512", "500", "492", "490", 0),
+    ("Write three hundred thousand and sixty-five in figure.", "30000056", "300000065", "3000065", "300,065", 0),
+    ("What is the place value of 2 in 304.12?", "hundredth", "tens", "tenth", "hundreds", 0),
+    ("Find the HCF of 48, 84 and 88.", "4", "2", "12", "21", 0),
+    ("Find the LCM of 8, 12 and 24.", "16", "24", "32", "48", 0),
+    ("Write the numeral 80050017 in words.", "Eight hundred five thousand", "Eight hundred fifty thousand", "Eighty thousand five hundred", "Eighty million fifty thousand", 0),
+    ("How many minutes are there in 1 three quarter hours?", "75 mins", "105 mins", "90 mins", "120 mins", 0),
+    ("Find the mean mark: 4, 5, 3, 4, 5, 5, 7, 6, 2, 5.", "5", "4", "7", "5.6", 0),
+    ("How many days are there in 7 weeks?", "49 days", "409 days", "28 days", "490 days", 0),
+    ("What is the LCM of 4, 6, and 10?", "70", "56", "45", "60", 0),
+    ("What is the sum of angles in a triangle?", "180 degrees", "120 degrees", "360 degrees", "90 degrees", 0),
+    ("What is the place value of 6 in 268?", "6", "600", "60", "680", 0),
+    ("Change 240 minutes to hours.", "4 hrs", "250 hrs", "12hrs", "6 hrs", 0),
+    ("What is 50% of 100kg?", "50kg", "25kg", "5.0kg", "100kg", 0),
+    ("Find the sum of values of 7 in the numbers 479 and 729.", "1400", "6900", "770", "140", 0),
+    ("Reduce 9 over 27 to lowest term.", "3/9", "3", "6/9", "1/3", 0),
+    ("How many seconds make up three and half minutes?", "240", "210", "180", "120", 0),
+    ("Write in figure: Twelve thousand, seven hundred and two.", "12000702", "1200702", "127002", "12702", 0),
+    ("What is the place value of 5 in 504.13?", "5 hundreds", "5 hundredths", "5 tens", "5 thousands", 0),
+    ("Write six million, three hundred thousand and nine in figures.", "6,000,309", "6,003,009", "6,030,009", "6,300,009", 0),
+    ("How many minutes are there in 660 seconds?", "11 minutes", "14 minutes", "15 minutes", "16 minutes", 0),
+    ("What is the place value of 2 in 8.217?", "Hundreds", "Hundredths", "Tens", "Tenths", 0),
+    ("What is the value of 3 in 642.531?", "Ten thousands", "Thousand", "Hundredth", "Tenth", 0),
+    ("Add: 2.6 + 0.068 + 1.59.", "1.239", "2.258", "2.198", "4.258", 0),
+    ("What is the mode of the scores: 5, 1, 3, 4, 3, 4, 2, 4, 4?", "4", "2", "3", "5", 0),
+    ("Change 15% to fraction in its lowest term.", "15/100", "15/50", "1/10", "3/20", 0),
+    ("What is the HCF of 12, 15 and 21?", "5", "3", "4", "7", 0),
+    ("Find the difference between the LCM and HCF of 16 and 32.", "30", "8", "16", "24", 0),
+    ("How many seconds are there in 12 hours?", "42500", "4500", "43200", "452", 0),
+    ("Find the sum of angles at a point?", "90 degrees", "180 degrees", "270 degrees", "360 degrees", 0),
+    ("Reduce 9/27 to its lowest term.", "3/9", "1/3", "6/9", "1/9", 0),
+    ("How many liters of water are in a tank whose volume is 60000cm3?", "60 liters", "6 liters", "600 liters", "6000 liters", 0),
+    ("How much is 12.5% of N320.00?", "N20", "N40", "N30", "N60", 1),
+    ("A car travels 50km on 8 litres of fuel. How far will it travel on 24 litres?", "24km", "243km", "271km", "150km", 1),
+    ("Calculate the perimeter of the square whose area is 225cm2.", "3600cm", "360cm", "240cm", "60cm", 1),
+    ("Find the average of 40, 64, 47 and 33.", "33", "42", "46", "47", 1),
+    ("The distance from Calabar to Abuja is 4800km. If it took 6hrs, find average speed.", "100km/hr", "900km/hr", "800km/hr", "1000km/hr", 1),
+    ("A woman bought beans for N12 and sold for N15, what was her percentage profit?", "125%", "80%", "56%", "25%", 1),
+    ("Find the volume of a cylinder with radius 4cm and height 14cm.", "704cm3", "532cm3", "337cm3", "176c
