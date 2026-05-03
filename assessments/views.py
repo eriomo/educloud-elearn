@@ -148,8 +148,7 @@ def update_weak_points(pupil, subject, answers_json, questions=None, mode='ce'):
 
 
 def get_student_report(pupil):
-    """Get a full weak point report for a student"""
-    weak_points = StudentWeakPoint.objects.filter(pupil=pupil).order_by('accuracy')
+    weak_points = StudentWeakPoint.objects.filter(pupil=pupil)
     report = {
         'weak': [],
         'needs_improvement': [],
@@ -157,6 +156,9 @@ def get_student_report(pupil):
     }
     for wp in weak_points:
         report[wp.status].append(wp)
+    report['weak'].sort(key=lambda x: x.accuracy)
+    report['needs_improvement'].sort(key=lambda x: x.accuracy)
+    report['strong'].sort(key=lambda x: -x.accuracy)
     return report
 
 
