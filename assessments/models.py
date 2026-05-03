@@ -23,6 +23,8 @@ class Quiz(models.Model):
 
 
 class Question(models.Model):
+    DIFFICULTY_CHOICES = [('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')]
+
     quiz = models.ForeignKey(Quiz, on_delete=models.CASCADE, related_name='questions')
     question_text = models.TextField()
     option_a = models.CharField(max_length=255)
@@ -33,6 +35,8 @@ class Question(models.Model):
         ('A', 'A'), ('B', 'B'), ('C', 'C'), ('D', 'D')
     ])
     order = models.PositiveIntegerField(default=0)
+    difficulty_predicted = models.CharField(max_length=6, choices=DIFFICULTY_CHOICES, default='medium', blank=True)
+    topic = models.CharField(max_length=100, blank=True, default='')
 
     class Meta:
         ordering = ['order']
@@ -64,6 +68,7 @@ class QuizResult(models.Model):
 
 class CEQuestion(models.Model):
     DIFFICULTY_CHOICES = [('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')]
+
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE, related_name='ce_questions')
     exam_year = models.PositiveIntegerField()
     question_text = models.TextField()
@@ -75,6 +80,8 @@ class CEQuestion(models.Model):
         ('A', 'A'), ('B', 'B'), ('C', 'C'), ('D', 'D')
     ])
     difficulty_level = models.CharField(max_length=6, choices=DIFFICULTY_CHOICES, default='medium')
+    difficulty_predicted = models.CharField(max_length=6, choices=DIFFICULTY_CHOICES, default='', blank=True)
+    topic = models.CharField(max_length=100, blank=True, default='')
 
     class Meta:
         ordering = ['subject', 'exam_year']
@@ -99,3 +106,34 @@ class PracticeResult(models.Model):
     @property
     def percentage(self):
         return round((self.correct_answers / self.total_questions) * 100, 1) if self.total_questions else 0
+
+
+class StudentWeakPoint(models.Model):
+    """Tracks a student's performance per topic across all attempts"""
+    pupil = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='weak_points')
+    subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
+    topic = models.CharField(max_length=100)
+    total_attempted = models.PositiveIntegerField(default=0)
+    total_correct = models.PositiveIntegerField(default=0)
+    last_updated = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['pupil', 'subject', 'topic']
+        ordering = ['topic']
+
+    @property
+    def accuracy(self):
+        return round((self.total_correct / self.total_attempted) * 100, 1) if self.total_attempted else 0
+
+    @property
+    def status(self):
+        acc = self.accuracy
+        if acc < 40:
+            return 'weak'
+        elif acc < 70:
+            return 'needs_improvement'
+        else:
+            return 'strong'
+
+    def __str__(self):
+        return f"{self.pupil} | {self.topic} | {self.accuracy}%"
