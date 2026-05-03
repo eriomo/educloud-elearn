@@ -5,11 +5,13 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.conf import settings
-from .models import Quiz, Question, QuizResult, CEQuestion, PracticeResult
+from .models import Quiz, Question, QuizResult, CEQuestion, PracticeResult, StudentWeakPoint
 from lessons.models import Subject, Lesson
 
 logger = logging.getLogger(__name__)
 
+
+# ── Groq AI Feedback ─────────────────────────────────────────────────────
 
 def get_groq_feedback(wrong_questions, subject_name, score, total, correct):
     try:
@@ -52,7 +54,6 @@ Respond ONLY with a valid JSON object (no markdown, no backticks) using exactly 
             temperature=0.4,
             max_tokens=800,
         )
-
         raw = response.choices[0].message.content.strip()
         raw = raw.replace("```json", "").replace("```", "").strip()
         return json.loads(raw)
@@ -66,9 +67,9 @@ Respond ONLY with a valid JSON object (no markdown, no backticks) using exactly 
             "improvement_plan": [
                 {"step": 1, "action": "Re-read your lesson notes", "detail": "Focus on topics from the wrong answers."},
                 {"step": 2, "action": "Practice similar questions", "detail": "Try the quiz again after reviewing."},
-                {"step": 3, "action": "Ask your teacher", "detail": "Ask for help on questions you didn't understand."},
+                {"step": 3, "action": "Ask your teacher", "detail": "Ask for help on questions you did not understand."},
             ],
-            "study_tips": ["Study in short focused sessions.", "Write out key facts by hand.", "Test yourself before sleeping."],
+            "study_tips": ["Study in short focused sessions.", "Write key facts by hand.", "Test yourself before sleeping."],
             "encouragement": "Keep going — every attempt makes you better!",
         }
 
@@ -94,6 +95,72 @@ def build_wrong_questions(questions, answers_json, mode="quiz"):
                 })
     return wrong
 
+
+# ── ML Difficulty Classifier ─────────────────────────────────────────────
+
+def classify_question(question_text, opt_a='', opt_b='', opt_c='', opt_d=''):
+    try:
+        from assessments.ml.classifier import predict_difficulty, predict_topic
+        difficulty = predict_difficulty(question_text, opt_a, opt_b, opt_c, opt_d)
+        topic = predict_topic(question_text)
+        return difficulty, topic
+    except Exception as e:
+        logger.error(f"Classification error: {e}")
+        return 'medium', 'General Mathematics'
+
+
+# ── Student Weak Point Tracker ────────────────────────────────────────────
+
+def update_weak_points(pupil, subject, answers_json, questions=None, mode='ce'):
+    """Update StudentWeakPoint records after a quiz/practice attempt"""
+    try:
+        from assessments.ml.classifier import predict_topic
+        if mode == 'ce':
+            for qid, data in answers_json.items():
+                q = CEQuestion.objects.filter(id=int(qid)).first()
+                if not q:
+                    continue
+                topic = q.topic or predict_topic(q.question_text)
+                wp, _ = StudentWeakPoint.objects.get_or_create(
+                    pupil=pupil, subject=subject, topic=topic
+                )
+                wp.total_attempted += 1
+                if data.get('is_correct'):
+                    wp.total_correct += 1
+                wp.save()
+        else:
+            if questions:
+                for q in questions:
+                    data = answers_json.get(str(q.id), {})
+                    topic = q.topic or predict_topic(q.question_text)
+                    subj = q.quiz.lesson.subject if hasattr(q.quiz.lesson, 'subject') else None
+                    if not subj:
+                        continue
+                    wp, _ = StudentWeakPoint.objects.get_or_create(
+                        pupil=pupil, subject=subj, topic=topic
+                    )
+                    wp.total_attempted += 1
+                    if data.get('is_correct'):
+                        wp.total_correct += 1
+                    wp.save()
+    except Exception as e:
+        logger.error(f"Weak point update error: {e}")
+
+
+def get_student_report(pupil):
+    """Get a full weak point report for a student"""
+    weak_points = StudentWeakPoint.objects.filter(pupil=pupil).order_by('accuracy')
+    report = {
+        'weak': [],
+        'needs_improvement': [],
+        'strong': [],
+    }
+    for wp in weak_points:
+        report[wp.status].append(wp)
+    return report
+
+
+# ── Regular Quizzes ───────────────────────────────────────────────────────
 
 @login_required
 def quiz_list(request, lesson_id):
@@ -128,14 +195,11 @@ def take_quiz(request, quiz_id):
         feedback = get_groq_feedback(wrong, subject_name, score, total, correct)
 
         result = QuizResult.objects.create(
-            pupil=request.user,
-            quiz=quiz,
-            score=score,
-            total_questions=total,
-            correct_answers=correct,
-            answers_json=answers,
-            ai_feedback=feedback,
+            pupil=request.user, quiz=quiz, score=score,
+            total_questions=total, correct_answers=correct,
+            answers_json=answers, ai_feedback=feedback,
         )
+        update_weak_points(request.user, None, answers, questions=list(questions), mode='quiz')
         return redirect('quiz_result', result_id=result.id)
 
     return render(request, 'assessments/take_quiz.html', {'quiz': quiz, 'questions': questions})
@@ -146,10 +210,12 @@ def quiz_result(request, result_id):
     result = get_object_or_404(QuizResult, id=result_id)
     questions = result.quiz.questions.all()
     feedback = result.ai_feedback or {}
+    report = get_student_report(request.user)
     return render(request, 'assessments/quiz_result.html', {
         'result': result,
         'questions': questions,
         'feedback': feedback,
+        'report': report,
     })
 
 
@@ -161,21 +227,24 @@ def quiz_create(request, lesson_id):
 
     if request.method == 'POST':
         quiz = Quiz.objects.create(
-            lesson=lesson,
-            title=request.POST.get('title', ''),
-            created_by=request.user,
+            lesson=lesson, title=request.POST.get('title', ''), created_by=request.user,
         )
         idx = 0
         while f'q_text_{idx}' in request.POST:
+            q_text = request.POST.get(f'q_text_{idx}', '')
+            opt_a = request.POST.get(f'q_a_{idx}', '')
+            opt_b = request.POST.get(f'q_b_{idx}', '')
+            opt_c = request.POST.get(f'q_c_{idx}', '')
+            opt_d = request.POST.get(f'q_d_{idx}', '')
+            difficulty, topic = classify_question(q_text, opt_a, opt_b, opt_c, opt_d)
             Question.objects.create(
-                quiz=quiz,
-                question_text=request.POST.get(f'q_text_{idx}', ''),
-                option_a=request.POST.get(f'q_a_{idx}', ''),
-                option_b=request.POST.get(f'q_b_{idx}', ''),
-                option_c=request.POST.get(f'q_c_{idx}', ''),
-                option_d=request.POST.get(f'q_d_{idx}', ''),
+                quiz=quiz, question_text=q_text,
+                option_a=opt_a, option_b=opt_b,
+                option_c=opt_c, option_d=opt_d,
                 correct_option=request.POST.get(f'q_correct_{idx}', 'A'),
                 order=idx,
+                difficulty_predicted=difficulty,
+                topic=topic,
             )
             idx += 1
         messages.success(request, f'Quiz "{quiz.title}" created with {idx} questions.')
@@ -183,6 +252,8 @@ def quiz_create(request, lesson_id):
 
     return render(request, 'assessments/quiz_create.html', {'lesson': lesson})
 
+
+# ── Common Entrance Practice ──────────────────────────────────────────────
 
 @login_required
 def ce_subject_list(request):
@@ -227,6 +298,7 @@ def ce_practice(request):
                 'correct': q.correct_option,
                 'question': q.question_text[:80],
                 'is_correct': is_correct,
+                'topic': q.topic or 'General',
             }
             if is_correct:
                 correct += 1
@@ -239,14 +311,11 @@ def ce_practice(request):
         feedback = get_groq_feedback(wrong, subject_label, score, total, correct)
 
         result = PracticeResult.objects.create(
-            pupil=request.user,
-            subject=subject_obj,
-            score=score,
-            total_questions=total,
-            correct_answers=correct,
-            answers_json=answers,
-            ai_feedback=feedback,
+            pupil=request.user, subject=subject_obj, score=score,
+            total_questions=total, correct_answers=correct,
+            answers_json=answers, ai_feedback=feedback,
         )
+        update_weak_points(request.user, subject_obj, answers, mode='ce')
         return redirect('ce_result', result_id=result.id)
 
     return render(request, 'assessments/ce_practice.html', {
@@ -261,10 +330,18 @@ def ce_practice(request):
 def ce_result(request, result_id):
     result = get_object_or_404(PracticeResult, id=result_id)
     feedback = result.ai_feedback or {}
+    report = get_student_report(request.user)
     return render(request, 'assessments/ce_result.html', {
         'result': result,
         'feedback': feedback,
+        'report': report,
     })
+
+
+@login_required
+def student_report(request):
+    report = get_student_report(request.user)
+    return render(request, 'assessments/student_report.html', {'report': report})
 
 
 @login_required
@@ -274,17 +351,23 @@ def ce_add_question(request):
     subjects = Subject.objects.all()
     if request.method == 'POST':
         subject = get_object_or_404(Subject, id=request.POST.get('subject'))
+        q_text = request.POST.get('question_text', '')
+        opt_a = request.POST.get('option_a', '')
+        opt_b = request.POST.get('option_b', '')
+        opt_c = request.POST.get('option_c', '')
+        opt_d = request.POST.get('option_d', '')
+        difficulty, topic = classify_question(q_text, opt_a, opt_b, opt_c, opt_d)
         CEQuestion.objects.create(
             subject=subject,
             exam_year=int(request.POST.get('exam_year', 2024)),
-            question_text=request.POST.get('question_text', ''),
-            option_a=request.POST.get('option_a', ''),
-            option_b=request.POST.get('option_b', ''),
-            option_c=request.POST.get('option_c', ''),
-            option_d=request.POST.get('option_d', ''),
+            question_text=q_text,
+            option_a=opt_a, option_b=opt_b,
+            option_c=opt_c, option_d=opt_d,
             correct_option=request.POST.get('correct_option', 'A'),
-            difficulty_level=request.POST.get('difficulty_level', 'medium'),
+            difficulty_level=request.POST.get('difficulty_level', difficulty),
+            difficulty_predicted=difficulty,
+            topic=topic,
         )
-        messages.success(request, 'Question added to the data bank.')
+        messages.success(request, f'Question added. AI classified it as: {difficulty.upper()} | Topic: {topic}')
         return redirect('ce_add_question')
     return render(request, 'assessments/ce_add_question.html', {'subjects': subjects})
