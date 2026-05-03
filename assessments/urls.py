@@ -10,4 +10,5 @@ urlpatterns = [
     path('common-entrance/practice/', views.ce_practice, name='ce_practice'),
     path('common-entrance/result/<int:result_id>/', views.ce_result, name='ce_result'),
     path('common-entrance/add/', views.ce_add_question, name='ce_add_question'),
+    path('my-report/', views.student_report, name='student_report'),
 ]
