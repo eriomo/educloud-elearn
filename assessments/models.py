@@ -59,7 +59,7 @@ class QuizResult(models.Model):
         ordering = ['-date_taken']
 
     def __str__(self):
-        return f"{self.pupil} — {self.quiz} — {self.score}%"
+        return f"{self.pupil} \u2014 {self.quiz} \u2014 {self.score}%"
 
     @property
     def percentage(self):
@@ -137,3 +137,32 @@ class StudentWeakPoint(models.Model):
 
     def __str__(self):
         return f"{self.pupil} | {self.topic} | {self.accuracy}%"
+
+
+class TopicKeyword(models.Model):
+    """
+    Editable knowledge base that maps a keyword to a topic.
+    The topic-assignment engine reads every row of this table (from the
+    Supabase/PostgreSQL database) and uses it to decide which topic a
+    question belongs to. Because the keywords live in the database, a
+    teacher or admin can add or refine them from the admin panel without
+    touching any code, and every change immediately improves how new
+    questions are matched to topics.
+    """
+    topic = models.CharField(max_length=100, db_index=True)
+    keyword = models.CharField(max_length=120)
+    weight = models.PositiveIntegerField(
+        default=1,
+        help_text='How strongly this keyword points to the topic (1 = normal, 2 = strong, 3 = very strong).'
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ['topic', 'keyword']
+        ordering = ['topic', 'keyword']
+        verbose_name = 'Topic keyword'
+        verbose_name_plural = 'Topic keywords'
+
+    def __str__(self):
+        return f"{self.topic} \u2190 '{self.keyword}' (x{self.weight})"
