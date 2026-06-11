@@ -22,3 +22,30 @@ class QuizResultAdmin(admin.ModelAdmin):
 @admin.register(PracticeResult)
 class PracticeResultAdmin(admin.ModelAdmin):
     list_display = ('pupil', 'subject', 'score', 'date_attempted')
+from django.contrib import admin
+from .models import TopicKeyword
+ 
+ 
+@admin.register(TopicKeyword)
+class TopicKeywordAdmin(admin.ModelAdmin):
+    list_display = ('topic', 'keyword', 'weight', 'is_active')
+    list_filter = ('topic', 'is_active')
+    search_fields = ('topic', 'keyword')
+    list_editable = ('weight', 'is_active')
+    ordering = ('topic', 'keyword')
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
