@@ -42,6 +42,13 @@ BLOOM_HARD_KEYWORDS = [
     'how many women', 'inverse proportion', 'direct proportion',
 ]
 
+# ---------------------------------------------------------------------------
+# Fallback keyword knowledge base.
+# This is the SAME data used before. It is now only a SAFETY NET: the engine
+# first tries to read keywords from the TopicKeyword table in the database
+# (Supabase). If that table is empty or cannot be reached, it falls back to
+# this built-in copy so the system never breaks.
+# ---------------------------------------------------------------------------
 TOPIC_KEYWORDS = {
     'Number & Numeration': [
         'figures', 'words', 'place value', 'numeral', 'digit', 'million',
@@ -97,14 +104,145 @@ TOPIC_KEYWORDS = {
 }
 
 
-def get_topic(question_text):
-    text = question_text.lower()
+def _load_keyword_kb():
+    """
+    Build the keyword knowledge base used for topic scoring.
+
+    Tries the database (Supabase) first by reading the TopicKeyword table,
+    so that topics can be edited from the admin panel without changing code.
+    Returns a dict: {topic: [(keyword, weight), ...]}.
+    Falls back to the built-in TOPIC_KEYWORDS if the table is empty or any
+    error occurs (e.g. during migrations or if the table does not exist yet).
+    """
+    try:
+        # Imported lazily so this module can still be imported before Django
+        # apps are ready (for example, during migrations).
+        from assessments.models import TopicKeyword
+        kb = {}
+        rows = TopicKeyword.objects.filter(is_active=True).values_list('topic', 'keyword', 'weight')
+        for topic, keyword, weight in rows:
+            kb.setdefault(topic, []).append((keyword.lower(), weight or 1))
+        if kb:
+            return kb
+    except Exception:
+        # Table missing, DB not ready, or any other issue -> use fallback.
+        pass
+    # Fallback: weight every built-in keyword as 1.
+    return {topic: [(kw.lower(), 1) for kw in kws] for topic, kws in TOPIC_KEYWORDS.items()}
+
+
+def _score_by_options(opt_a, opt_b, opt_c, opt_d):
+    """Strongest signal: the format of the answer options reveals the topic."""
+    options = [str(o) for o in [opt_a, opt_b, opt_c, opt_d] if o]
+    if not options:
+        return None
+    joined = ' '.join(options).lower()
+    # All options are money -> Commercial Maths
+    if all(('n' in o.lower() and re.search(r'n\s*\d', o.lower())) or 'naira' in o.lower() or '\u20a6' in o for o in options):
+        return 'Commercial Maths'
+    # All options are areas / volumes -> Geometry
+    if all(re.search(r'cm2|cm3|m2|m3|cm\u00b2|cm\u00b3', o.lower()) for o in options):
+        return 'Geometry'
+    # All options have degrees -> Geometry
+    if all('degree' in o.lower() or '\u00b0' in o for o in options):
+        return 'Geometry'
+    # All options are speeds -> Time & Speed
+    if all('km/h' in o.lower() or 'km/hr' in o.lower() or 'm/s' in o.lower() for o in options):
+        return 'Time & Speed'
+    # All options are percentages -> Percentages
+    if all('%' in o for o in options):
+        return 'Percentages'
+    # All options are fractions like 3/4 -> Fractions
+    if all(re.search(r'\d+\s*/\s*\d+', o) for o in options):
+        return 'Fractions'
+    # All options are time units -> Time & Speed
+    if all(re.search(r'year|month|week|day|hour|min|sec', o.lower()) for o in options):
+        return 'Time & Speed'
+    return None
+
+
+def _score_by_units_symbols(text):
+    """Second signal: units and symbols inside the question."""
+    if re.search(r'km/h|km/hr|m/s', text):
+        return 'Time & Speed'
+    if re.search(r'\bcm2\b|\bm2\b|\bcm3\b|\bm3\b|cm\u00b2|cm\u00b3', text):
+        return 'Geometry'
+    if re.search(r'\d+\s*:\s*\d+', text):           # ratio pattern 3:2
+        return 'Ratio & Proportion'
+    if re.search(r'\u20a6|\bn\d|naira|kobo', text):  # money
+        return 'Commercial Maths'
+    if re.search(r'%|percent', text):
+        return 'Percentages'
+    if re.search(r'\b[xyz]\s*[+\-=]|[+\-=]\s*[xyz]\b', text):  # algebra
+        return 'Algebra'
+    return None
+
+
+VERB_OBJECT_PATTERNS = [
+    (r'(find|calculate)\s+.*(area|perimeter|volume|circumference|radius|diameter)', 'Geometry'),
+    (r'(find|calculate)\s+.*(angle|degrees)', 'Geometry'),
+    (r'(find|calculate)\s+.*(mean|mode|median|average|range)', 'Statistics'),
+    (r'(find|calculate)\s+.*(profit|loss|interest|discount|commission)', 'Commercial Maths'),
+    (r'(percentage|%)\s*(profit|loss|gain)', 'Commercial Maths'),
+    (r'(profit|loss|gain|discount|commission|bought|sold|cost price|selling price)', 'Commercial Maths'),
+    (r'(how much|what is the cost|find the cost|what is the price)', 'Commercial Maths'),
+    (r'(find|calculate)\s+.*(speed|distance)', 'Time & Speed'),
+    (r'(how long|what time|when did|at what speed|how far)', 'Time & Speed'),
+    (r'(solve|find)\s+.*(value of [xyz]|equation)', 'Algebra'),
+    (r'if\s+\d*\s*[xyz]\s*[+\-=]', 'Algebra'),
+    (r'(shared|divided|split)\s+.*(ratio|proportion)', 'Ratio & Proportion'),
+    (r'in the ratio\s+\d+\s*:\s*\d+', 'Ratio & Proportion'),
+    (r'(express|write)\s+.*(figures|words|numeral)', 'Number & Numeration'),
+    (r'place value|significant figure|round off|approximate', 'Number & Numeration'),
+    (r'(reduce|simplify)\s+.*(lowest|fraction|term)', 'Fractions'),
+    (r'(arrange|order)\s+.*(fraction|ascending|descending)', 'Fractions'),
+    (r'(find|what is)\s+.*(lcm|hcf|highest common|lowest common)', 'LCM & HCF'),
+]
+
+
+def _score_by_verb_object(text):
+    """Third signal: the verb together with what it acts on."""
+    for pattern, topic in VERB_OBJECT_PATTERNS:
+        if re.search(pattern, text):
+            return topic
+    return None
+
+
+def get_topic(question_text, option_a='', option_b='', option_c='', option_d=''):
+    """
+    Multi-signal topic assignment.
+
+    Combines four weighted signals and returns the highest-scoring topic:
+      - answer-option format        (3 points, strongest)
+      - units and symbols           (2 points)
+      - verb + object pattern       (2 points)
+      - keyword knowledge base      (1 point per matching keyword, from Supabase)
+
+    Backwards compatible: still works if called with only the question text.
+    """
+    text = (question_text or '').lower()
     scores = {}
-    for topic, keywords in TOPIC_KEYWORDS.items():
-        score = sum(1 for kw in keywords if kw.lower() in text)
-        scores[topic] = score
-    best_topic = max(scores, key=scores.get)
-    return best_topic if scores[best_topic] > 0 else 'General Mathematics'
+
+    def add(topic, pts):
+        if topic:
+            scores[topic] = scores.get(topic, 0) + pts
+
+    # Signal 1 - answer options (strongest)
+    add(_score_by_options(option_a, option_b, option_c, option_d), 3)
+    # Signal 2 - units and symbols
+    add(_score_by_units_symbols(text), 2)
+    # Signal 3 - verb + object
+    add(_score_by_verb_object(text), 2)
+    # Signal 4 - keyword knowledge base (from the database / Supabase)
+    kb = _load_keyword_kb()
+    for topic, pairs in kb.items():
+        match = sum(weight for kw, weight in pairs if kw in text)
+        if match:
+            add(topic, match)
+
+    if not scores or max(scores.values()) == 0:
+        return 'General Mathematics'
+    return max(scores, key=scores.get)
 
 
 def auto_label(question_text):
@@ -140,7 +278,7 @@ def extract_features(question_text, option_a='', option_b='', option_c='', optio
     option_avg_length = sum(len(o) for o in options) / max(len(options), 1)
 
     has_numbers = int(bool(re.search(r'\d', text)))
-    has_fraction = int(bool(re.search(r'[⅟⅔⅗¾⅝⅘⅞½⅓¼]', question_text)) or '/' in text)
+    has_fraction = int(bool(re.search(r'[\u215f\u2154\u2157\u00be\u215d\u2158\u215e\u00bd\u2153\u00bc]', question_text)) or '/' in text)
 
     if word_count > 40:
         complexity = 2
