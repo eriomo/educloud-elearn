@@ -3,12 +3,8 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
 
-    # IMPORTANT: this must depend on your LATEST existing assessments migration.
-    # Your repo's most recent one is 0004_add_subject_create_and_topic_fields.
-    # If `python manage.py migrate` complains about a bad dependency or a
-    # conflict, see STEP 4 in the guide for the one-command fix.
     dependencies = [
-        ('assessments', '0004_add_subject_create_and_topic_fields'),
+        ('assessments', '0003_merge'),
     ]
 
     operations = [
