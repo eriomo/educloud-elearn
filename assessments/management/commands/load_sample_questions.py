@@ -24,7 +24,6 @@ QUESTIONS = [
     ("A woman bought a measure of beans for N12 and sold it for N15, what was her percentage profit?", "125%", "80%", "56%", "25%", "D", 2014),
     ("Reduce 225/300 to its lowest form.", "2/3", "3/5", "3/4", "7/9", "C", 2014),
     ("Two men shared the cost of a business in the ratio 7:19. If the smaller share is N56,000, find the total cost.", "N54,000", "N48,000", "N162,000", "N156,000", "C", 2014),
-    ("A woman bought a measure of beans for N12 and sold it for N15. What was her percentage profit?", "125%", "80%", "56%", "25%", "D", 2014),
     ("An exporter sold oranges worth N30,000 and received a 6% commission. How much did he receive?", "N1,800", "N23,000", "N28,800", "N28,200", "A", 2014),
     ("A job takes 28 men 26 days to complete. How many men are needed to complete it in 14 days?", "45 men", "32 men", "52 men", "48 men", "C", 2014),
     ("Solve the simultaneous equation: x+y = 3, 3x+y = 5.", "x=1,y=2", "x=4,y=3", "x=1,y=3", "x=2,y=1", "A", 2014),
@@ -160,7 +159,7 @@ QUESTIONS = [
     ("Find the LCM of 16, 32, and 40.", "160", "180", "200", "300", "A", 2020),
     ("A boy divides 54 by y and the result is 6. Find the value of y.", "3", "9", "23", "60", "B", 2020),
     ("Which of the following is not a perfect square?", "36", "49", "70", "81", "C", 2020),
-    ("If a number multiplies itself to give 289, what is the number?", "11", "12", "13", "17", "E", 2020),
+    ("If a number multiplies itself to give 289, what is the number?", "11", "12", "13", "17", "D", 2020),
     ("Find the value of x-3, if 14+x=20.", "28", "21", "7", "3", "D", 2020),
     ("The volume of a cube is 64cm. Find the length.", "3cm", "4cm", "5cm", "6cm", "B", 2020),
     ("If 2x-18 = 0, find the value of x.", "0", "1", "2", "9", "D", 2020),
@@ -179,54 +178,66 @@ class Command(BaseCommand):
     help = 'Load sample Mathematics questions into the database'
 
     def handle(self, *args, **kwargs):
-        subject, created = Subject.objects.get_or_create(
-            name='Mathematics',
-            defaults={
-                'class_level': 6,
-                'color': '#2B6B8A',
-            }
-        )
-        if created:
-            self.stdout.write(f'Created subject: Mathematics')
+        # Look up Mathematics by name only; use the existing one if present
+        # (your Subject is unique by name + class_level, so filter then create).
+        subject = Subject.objects.filter(name='Mathematics').first()
+        if subject is None:
+            subject = Subject.objects.create(
+                name='Mathematics',
+                class_level=6,
+                color='#2B6B8A',
+            )
+            self.stdout.write('Created subject: Mathematics')
         else:
-            self.stdout.write(f'Subject already exists: Mathematics')
+            self.stdout.write(f'Using existing subject: {subject}')
 
         added = 0
         skipped = 0
+        failed = 0
 
         for q_text, opt_a, opt_b, opt_c, opt_d, correct, year in QUESTIONS:
-            if CEQuestion.objects.filter(question_text=q_text, exam_year=year).exists():
-                skipped += 1
-                continue
-
-            # Auto classify using ML if available
-            difficulty = 'medium'
-            topic = 'General Mathematics'
+            # Each question is wrapped so ONE bad row can never stop the rest.
             try:
-                from assessments.ml.classifier import predict_difficulty, predict_topic
-                difficulty = predict_difficulty(q_text, opt_a, opt_b, opt_c, opt_d)
-                topic = predict_topic(q_text)
-            except Exception:
-                from assessments.ml.features import auto_label, get_topic
-                label = auto_label(q_text)
-                difficulty = {0: 'easy', 1: 'medium', 2: 'hard'}[label]
-                topic = get_topic(q_text)
+                if CEQuestion.objects.filter(question_text=q_text, exam_year=year).exists():
+                    skipped += 1
+                    continue
 
-            CEQuestion.objects.create(
-                subject=subject,
-                exam_year=year,
-                question_text=q_text,
-                option_a=opt_a,
-                option_b=opt_b,
-                option_c=opt_c,
-                option_d=opt_d,
-                correct_option=correct if correct in ['A', 'B', 'C', 'D'] else 'A',
-                difficulty_level=difficulty,
-                difficulty_predicted=difficulty,
-                topic=topic,
-            )
-            added += 1
+                # Classify difficulty + topic; fall back safely if ML errors.
+                difficulty = 'medium'
+                topic = 'General Mathematics'
+                try:
+                    from assessments.ml.classifier import predict_difficulty, predict_topic
+                    difficulty = predict_difficulty(q_text, opt_a, opt_b, opt_c, opt_d)
+                    topic = predict_topic(q_text, opt_a, opt_b, opt_c, opt_d)
+                except Exception:
+                    try:
+                        from assessments.ml.features import auto_label, get_topic
+                        difficulty = {0: 'easy', 1: 'medium', 2: 'hard'}[auto_label(q_text)]
+                        topic = get_topic(q_text, opt_a, opt_b, opt_c, opt_d)
+                    except Exception:
+                        difficulty, topic = 'medium', 'General Mathematics'
+
+                CEQuestion.objects.create(
+                    subject=subject,
+                    exam_year=year,
+                    question_text=q_text,
+                    option_a=opt_a,
+                    option_b=opt_b,
+                    option_c=opt_c,
+                    option_d=opt_d,
+                    correct_option=correct if correct in ['A', 'B', 'C', 'D'] else 'A',
+                    difficulty_level=difficulty,
+                    difficulty_predicted=difficulty,
+                    topic=topic,
+                )
+                added += 1
+            except Exception as e:
+                failed += 1
+                self.stdout.write(self.style.WARNING(
+                    f'Skipped one question due to error: {e}'
+                ))
 
         self.stdout.write(self.style.SUCCESS(
-            f'Done! Added {added} questions. Skipped {skipped} duplicates.'
+            f'Done! Added {added}, skipped {skipped} duplicates, failed {failed}. '
+            f'Total CE questions now: {CEQuestion.objects.count()}.'
         ))
