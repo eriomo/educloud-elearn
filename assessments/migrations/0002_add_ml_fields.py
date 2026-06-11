@@ -2,11 +2,9 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ('assessments', '0001_initial'),
     ]
-
     operations = [
         migrations.AddField(
             model_name='cequestion',
@@ -28,15 +26,26 @@ class Migration(migrations.Migration):
             name='topic',
             field=models.CharField(blank=True, default='', max_length=100),
         ),
-        migrations.AddField(
-            model_name='quizresult',
-            name='ai_feedback',
-            field=models.JSONField(blank=True, default=dict),
-        ),
-        migrations.AddField(
-            model_name='practiceresult',
-            name='ai_feedback',
-            field=models.JSONField(blank=True, default=dict),
+        # ----------------------------------------------------------------
+        # The two ai_feedback columns are already added by 0002_ai_feedback.
+        # We use SeparateDatabaseAndState with an EMPTY database_operations
+        # list so Django records these fields in its migration history
+        # WITHOUT trying to add the columns a second time (which crashed).
+        # ----------------------------------------------------------------
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.AddField(
+                    model_name='quizresult',
+                    name='ai_feedback',
+                    field=models.JSONField(blank=True, default=dict),
+                ),
+                migrations.AddField(
+                    model_name='practiceresult',
+                    name='ai_feedback',
+                    field=models.JSONField(blank=True, default=dict),
+                ),
+            ],
         ),
         migrations.CreateModel(
             name='StudentWeakPoint',
