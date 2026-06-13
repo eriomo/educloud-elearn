@@ -1,15 +1,14 @@
 # assessments/views_adaptive.py
 
-import json
 import random
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.db.models import Count
 
 from lessons.models import Subject
-from .models import CEQuestion, PracticeResult, StudentWeakPoint
+from .models import CEQuestion, StudentWeakPoint
 
-DIFF_BANDS = ['easy', 'medium', 'hard']
 
 def _next_difficulty(score_float):
     if score_float < 0.65:
@@ -21,13 +20,23 @@ def _next_difficulty(score_float):
 
 @login_required
 def adaptive_home(request):
-    # Use the correct related name: ce_questions (not ceQuestion)
-    subjects = Subject.objects.filter(
-        ce_questions__isnull=False
-    ).distinct().order_by('name')
+    # For each unique subject name, pick the one subject ID that has the most questions.
+    # This collapses the 36 subject rows (6 class levels x 6 subjects) down to only
+    # the subjects that actually have CE questions, showing each name once.
+    subjects_with_counts = (
+        Subject.objects
+        .filter(ce_questions__isnull=False)
+        .annotate(question_count=Count('ce_questions'))
+        .order_by('name', '-question_count')
+    )
 
-    for s in subjects:
-        s.question_count = CEQuestion.objects.filter(subject=s).count()
+    # Keep only the highest-count subject per name
+    seen = set()
+    subjects = []
+    for s in subjects_with_counts:
+        if s.name not in seen:
+            seen.add(s.name)
+            subjects.append(s)
 
     return render(request, 'assessments/adaptive_home.html', {'subjects': subjects})
 
