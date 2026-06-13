@@ -1,16 +1,16 @@
 from django.db import models
 from django.conf import settings
+from .text_extraction import extract_text_from_file
+
 
 class Subject(models.Model):
     name = models.CharField(max_length=100)
     class_level = models.PositiveIntegerField(help_text="Primary 1-6")
     icon = models.CharField(max_length=50, default='book', help_text="Icon name for display")
     color = models.CharField(max_length=7, default='#2B6B8A')
-
     class Meta:
         unique_together = ('name', 'class_level')
         ordering = ['class_level', 'name']
-
     def __str__(self):
         return f"{self.name} (Primary {self.class_level})"
 
@@ -30,9 +30,19 @@ class Lesson(models.Model):
     uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
     date_uploaded = models.DateTimeField(auto_now_add=True)
     is_published = models.BooleanField(default=True)
-
     class Meta:
         ordering = ['-date_uploaded']
-
     def __str__(self):
         return f"{self.topic_title} — {self.subject}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # If a file was uploaded but we don't have extracted text yet,
+        # pull the text out of it (.txt / .pdf / .docx) and store it in
+        # content_text - a normal database column, in Supabase, that
+        # persists across redeploys.
+        if self.content_file and not self.content_text:
+            extracted = extract_text_from_file(self.content_file)
+            if extracted:
+                self.content_text = extracted
+                super().save(update_fields=["content_text"])
