@@ -1,22 +1,22 @@
 {% extends 'base.html' %}
-{% block title %}Adaptive Practice — Question {{ session.questions_answered|add:1 }}{% endblock %}
+{% block title %}Adaptive Practice — Question {{ q_number }} of {{ max_q }}{% endblock %}
 {% block content %}
 <div class="max-w-2xl mx-auto py-8 px-4">
 
   <!-- Progress bar -->
-  <div class="mb-4">
+  <div class="mb-5">
     <div class="flex justify-between text-sm text-gray-600 mb-1">
-      <span>Question {{ session.questions_answered|add:1 }} of 15</span>
-      <span>Score: {{ session.score }} correct</span>
+      <span>Question {{ q_number }} of {{ max_q }}</span>
+      <span>Score: {{ session.score }} / {{ session.total }}</span>
     </div>
-    <div class="w-full bg-gray-200 rounded-full h-2">
-      <div class="bg-brand-600 h-2 rounded-full transition-all"
-           style="width: {% widthratio session.questions_answered 15 100 %}%"></div>
+    <div class="w-full bg-gray-200 rounded-full h-2.5">
+      <div class="bg-brand-600 h-2.5 rounded-full transition-all"
+           style="width: {% widthratio session.total max_q 100 %}%"></div>
     </div>
   </div>
 
   <!-- Difficulty badge -->
-  <div class="mb-4">
+  <div class="mb-4 flex items-center gap-2">
     {% if current_difficulty == 'easy' %}
       <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full">Foundation Level</span>
     {% elif current_difficulty == 'hard' %}
@@ -24,7 +24,8 @@
     {% else %}
       <span class="inline-block bg-yellow-100 text-yellow-800 text-xs font-semibold px-3 py-1 rounded-full">Standard Level</span>
     {% endif %}
-    {% if question.exam_year %}<span class="ml-2 text-xs text-gray-400">({{ question.exam_year }})</span>{% endif %}
+    {% if question.topic %}<span class="text-xs text-gray-400">{{ question.topic }}</span>{% endif %}
+    {% if question.exam_year %}<span class="text-xs text-gray-400">({{ question.exam_year }})</span>{% endif %}
   </div>
 
   <!-- Question card -->
@@ -50,6 +51,13 @@
       </div>
     </form>
   </div>
+
+  <!-- Weak topic reminder -->
+  {% if session.weak_topics %}
+  <div class="text-xs text-gray-400 text-center">
+    Focusing extra questions on: {{ session.weak_topics|join:", " }}
+  </div>
+  {% endif %}
 
 </div>
 {% endblock %}
