@@ -1,19 +1,39 @@
-{% extends 'base.html' %}{% block title %}Adaptive Practice{% endblock %}{% block content %}
-<h1 class="text-2xl font-display font-bold text-brand-700 mb-2">Adaptive Practice</h1>
-<p class="text-gray-600 mb-6 max-w-2xl">In Adaptive Practice, you don't choose Easy, Medium, or Hard yourself. The system starts you in the middle and watches how you do: if you answer correctly, the questions get a little harder; if you find them difficult, the questions get a little easier. Questions are also drawn from any year. You will answer 15 questions in total.</p>
+{% extends 'base.html' %}
+{% block title %}Adaptive Practice{% endblock %}
+{% block content %}
+<div class="max-w-3xl mx-auto py-8 px-4">
+  <h1 class="text-2xl font-display font-bold text-brand-700 mb-2">Adaptive Practice</h1>
+  <p class="text-gray-600 mb-6">The system adjusts question difficulty based on your answers — getting harder when you are doing well and easier when you need more practice.</p>
 
-{% if error %}
-<div class="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-4 max-w-md">{{ error }}</div>
-{% endif %}
+  {% if messages %}
+    {% for message in messages %}
+      <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">{{ message }}</div>
+    {% endfor %}
+  {% endif %}
 
-<h2 class="text-sm font-semibold text-gray-700 mb-2">Choose a subject</h2>
-<div class="space-y-3 max-w-md">
-  {% for subject in subjects %}
-  <a href="{% url 'adaptive_start' subject.id %}" class="block bg-brand-700 text-white rounded-xl shadow-sm px-5 py-4 font-semibold hover:opacity-90 transition">
-    Start Adaptive Practice &mdash; {{ subject.name }}
-  </a>
-  {% empty %}
-  <p class="text-gray-500">No subjects are available yet.</p>
-  {% endfor %}
+  <div class="bg-white rounded-xl shadow-sm p-6">
+    <h2 class="text-lg font-semibold text-gray-800 mb-4">Choose a Subject to Begin</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {% for subject in subjects %}
+      <a href="{% url 'adaptive_start' subject.id %}"
+         class="flex items-center gap-3 border border-gray-200 rounded-lg p-4 hover:border-brand-500 hover:bg-brand-50 transition-colors">
+        <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
+             style="background-color: {{ subject.color|default:'#2B6B8A' }}">
+          {{ subject.name|slice:":2"|upper }}
+        </div>
+        <div>
+          <div class="font-semibold text-gray-800">{{ subject.name }}</div>
+          <div class="text-xs text-gray-500">{{ subject.question_count|default:'' }} questions available</div>
+        </div>
+      </a>
+      {% empty %}
+      <p class="text-gray-500 col-span-2">No subjects with questions available yet. Ask your teacher to add questions.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+    <strong>How Adaptive Practice works:</strong> You start at a medium level. After each correct answer the next question is slightly harder; after each wrong answer it becomes slightly easier. Your practice session continues until you have answered 15 questions. At the end, you see a breakdown of your strong and weak topics.
+  </div>
 </div>
 {% endblock %}
