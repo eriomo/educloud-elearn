@@ -4,74 +4,63 @@ import logging
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.conf import settings
 from .models import Quiz, Question, QuizResult, CEQuestion, PracticeResult, StudentWeakPoint
 from lessons.models import Subject, Lesson
 
 logger = logging.getLogger(__name__)
 
 
-# ── Groq AI Feedback ─────────────────────────────────────────────────────
+# ── Result Feedback (built from the pupil's own weak-point history) ──────
 
-def get_groq_feedback(wrong_questions, subject_name, score, total, correct):
-    try:
-        from groq import Groq
-        client = Groq(api_key=settings.GROQ_API_KEY)
+def build_feedback(report, score, correct, total):
+    """
+    Builds a result-summary dict from the pupil's own StudentWeakPoint
+    history - no external API, no AI branding. `report` is the dict
+    returned by get_student_report(pupil):
+    {'weak': [...], 'needs_improvement': [...], 'strong': [...]}.
 
-        mistakes_text = ""
-        for i, item in enumerate(wrong_questions, 1):
-            mistakes_text += (
-                f"\n{i}. Question: {item['question']}\n"
-                f"   Student answered: {item['student_answer']}\n"
-                f"   Correct answer: {item['correct_answer']}\n"
-            )
+    Returns the same dict shape the templates expect (overall_verdict,
+    strengths, weakpoints, improvement_plan, study_tips, encouragement).
+    """
+    if score >= 70:
+        overall = f"Well done — you scored {score}% ({correct}/{total} correct)."
+    elif score >= 50:
+        overall = f"You scored {score}% ({correct}/{total} correct). A solid attempt, with room to grow."
+    else:
+        overall = f"You scored {score}% ({correct}/{total} correct). Let's focus on the topics below to build your score up."
 
-        prompt = f"""You are an expert tutor analysing a primary school student's quiz performance.
+    strengths = []
+    for wp in report.get('strong', [])[:2]:
+        strengths.append(f"{wp.topic} — {wp.accuracy:.0f}% correct so far. Keep it up!")
+    if not strengths:
+        strengths.append("Keep practising — your strong topics will appear here as you go.")
 
-Subject: {subject_name}
-Score: {correct}/{total} ({score}%)
+    weak_list = (report.get('weak', []) + report.get('needs_improvement', []))[:3]
+    weakpoints = []
+    improvement_plan = []
+    for i, wp in enumerate(weak_list, 1):
+        weakpoints.append(f"{wp.topic} — {wp.accuracy:.0f}% correct so far.")
+        improvement_plan.append({
+            "step": i,
+            "action": f"Practise more {wp.topic} questions",
+            "detail": f"Start with easier {wp.topic} questions to build confidence, then move up.",
+            "topic": wp.topic,
+        })
+    if not weakpoints:
+        weakpoints.append("No clear weak topics yet — keep practising across all topics.")
 
-Questions the student got WRONG:
-{mistakes_text if mistakes_text else 'None — the student got everything right!'}
-
-Respond ONLY with a valid JSON object (no markdown, no backticks) using exactly this structure:
-{{
-  "overall_verdict": "one sentence summary of performance",
-  "strengths": ["strength 1", "strength 2"],
-  "weakpoints": ["weakness topic 1", "weakness topic 2"],
-  "improvement_plan": [
-    {{"step": 1, "action": "what to do", "detail": "how to do it"}},
-    {{"step": 2, "action": "what to do", "detail": "how to do it"}},
-    {{"step": 3, "action": "what to do", "detail": "how to do it"}}
-  ],
-  "study_tips": ["tip 1", "tip 2", "tip 3"],
-  "encouragement": "a warm motivating message addressed to the student"
-}}"""
-
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.4,
-            max_tokens=800,
-        )
-        raw = response.choices[0].message.content.strip()
-        raw = raw.replace("```json", "").replace("```", "").strip()
-        return json.loads(raw)
-
-    except Exception as e:
-        logger.error(f"Groq feedback error: {e}")
-        return {
-            "overall_verdict": f"You scored {score}% on this quiz.",
-            "strengths": ["You completed the quiz — that takes effort!"],
-            "weakpoints": ["Review the questions you missed carefully."],
-            "improvement_plan": [
-                {"step": 1, "action": "Re-read your lesson notes", "detail": "Focus on topics from the wrong answers."},
-                {"step": 2, "action": "Practice similar questions", "detail": "Try the quiz again after reviewing."},
-                {"step": 3, "action": "Ask your teacher", "detail": "Ask for help on questions you did not understand."},
-            ],
-            "study_tips": ["Study in short focused sessions.", "Write key facts by hand.", "Test yourself before sleeping."],
-            "encouragement": "Keep going — every attempt makes you better!",
-        }
+    return {
+        "overall_verdict": overall,
+        "strengths": strengths,
+        "weakpoints": weakpoints,
+        "improvement_plan": improvement_plan,
+        "study_tips": [
+            "Review one topic at a time instead of everything at once.",
+            "Try the same topic again after a short break.",
+            "Read each question twice before choosing an answer.",
+        ],
+        "encouragement": "Every attempt helps you improve — keep practising!",
+    }
 
 
 def build_wrong_questions(questions, answers_json, mode="quiz"):
@@ -192,16 +181,16 @@ def take_quiz(request, quiz_id):
                 correct += 1
 
         score = round((correct / total) * 100, 2) if total else 0
-        wrong = build_wrong_questions(questions, answers, mode="quiz")
-        subject_name = quiz.lesson.subject.name if hasattr(quiz.lesson, 'subject') else quiz.lesson.title
-        feedback = get_groq_feedback(wrong, subject_name, score, total, correct)
+
+        update_weak_points(request.user, None, answers, questions=list(questions), mode='quiz')
+        report = get_student_report(request.user)
+        feedback = build_feedback(report, score, correct, total)
 
         result = QuizResult.objects.create(
             pupil=request.user, quiz=quiz, score=score,
             total_questions=total, correct_answers=correct,
             answers_json=answers, ai_feedback=feedback,
         )
-        update_weak_points(request.user, None, answers, questions=list(questions), mode='quiz')
         return redirect('quiz_result', result_id=result.id)
 
     return render(request, 'assessments/take_quiz.html', {'quiz': quiz, 'questions': questions})
@@ -259,7 +248,7 @@ def quiz_create(request, lesson_id):
 
 @login_required
 def ce_subject_list(request):
-    subjects = Subject.objects.values('name').distinct()
+    subjects = Subject.objects.values_list('name', flat=True).distinct().order_by('name')
     years = CEQuestion.objects.values_list('exam_year', flat=True).distinct().order_by('-exam_year')
     return render(request, 'assessments/ce_subject_list.html', {'subjects': subjects, 'years': years})
 
@@ -269,6 +258,7 @@ def ce_practice(request):
     subject_name = request.GET.get('subject', '')
     year = request.GET.get('year', '')
     difficulty = request.GET.get('difficulty', '')
+    topic = request.GET.get('topic', '')
 
     qs = CEQuestion.objects.all()
     if subject_name:
@@ -277,6 +267,8 @@ def ce_practice(request):
         qs = qs.filter(exam_year=int(year))
     if difficulty:
         qs = qs.filter(difficulty_level=difficulty)
+    if topic:
+        qs = qs.filter(topic=topic)
 
     questions = list(qs)
     random.shuffle(questions)
@@ -307,17 +299,16 @@ def ce_practice(request):
 
         score = round((correct / total) * 100, 2) if total else 0
         subject_obj = CEQuestion.objects.filter(id=int(q_ids[0])).first().subject if q_ids else None
-        subject_label = subject_obj.name if subject_obj else 'Common Entrance'
 
-        wrong = build_wrong_questions(None, answers, mode="ce")
-        feedback = get_groq_feedback(wrong, subject_label, score, total, correct)
+        update_weak_points(request.user, subject_obj, answers, mode='ce')
+        report = get_student_report(request.user)
+        feedback = build_feedback(report, score, correct, total)
 
         result = PracticeResult.objects.create(
             pupil=request.user, subject=subject_obj, score=score,
             total_questions=total, correct_answers=correct,
             answers_json=answers, ai_feedback=feedback,
         )
-        update_weak_points(request.user, subject_obj, answers, mode='ce')
         return redirect('ce_result', result_id=result.id)
 
     return render(request, 'assessments/ce_practice.html', {
@@ -325,6 +316,7 @@ def ce_practice(request):
         'subject_name': subject_name,
         'year': year,
         'difficulty': difficulty,
+        'topic': topic,
     })
 
 
@@ -370,6 +362,6 @@ def ce_add_question(request):
             difficulty_predicted=difficulty,
             topic=topic,
         )
-        messages.success(request, f'Question added. AI classified it as: {difficulty.upper()} | Topic: {topic}')
+        messages.success(request, f'Question added. Classified as: {difficulty.upper()} | Topic: {topic}')
         return redirect('ce_add_question')
     return render(request, 'assessments/ce_add_question.html', {'subjects': subjects})
