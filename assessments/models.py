@@ -59,7 +59,7 @@ class QuizResult(models.Model):
         ordering = ['-date_taken']
 
     def __str__(self):
-        return f"{self.pupil} \u2014 {self.quiz} \u2014 {self.score}%"
+        return f"{self.pupil} — {self.quiz} — {self.score}%"
 
     @property
     def percentage(self):
@@ -109,7 +109,6 @@ class PracticeResult(models.Model):
 
 
 class StudentWeakPoint(models.Model):
-    """Tracks a student's performance per topic across all attempts"""
     pupil = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='weak_points')
     subject = models.ForeignKey(Subject, on_delete=models.CASCADE)
     topic = models.CharField(max_length=100)
@@ -140,21 +139,9 @@ class StudentWeakPoint(models.Model):
 
 
 class TopicKeyword(models.Model):
-    """
-    Editable knowledge base that maps a keyword to a topic.
-    The topic-assignment engine reads every row of this table (from the
-    Supabase/PostgreSQL database) and uses it to decide which topic a
-    question belongs to. Because the keywords live in the database, a
-    teacher or admin can add or refine them from the admin panel without
-    touching any code, and every change immediately improves how new
-    questions are matched to topics.
-    """
     topic = models.CharField(max_length=100, db_index=True)
     keyword = models.CharField(max_length=120)
-    weight = models.PositiveIntegerField(
-        default=1,
-        help_text='How strongly this keyword points to the topic (1 = normal, 2 = strong, 3 = very strong).'
-    )
+    weight = models.PositiveIntegerField(default=1)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -165,4 +152,99 @@ class TopicKeyword(models.Model):
         verbose_name_plural = 'Topic keywords'
 
     def __str__(self):
-        return f"{self.topic} \u2190 '{self.keyword}' (x{self.weight})"
+        return f"{self.topic} <- '{self.keyword}' (x{self.weight})"
+
+
+class TopicNote(models.Model):
+    topic = models.CharField(max_length=100, unique=True, db_index=True)
+    scheme_of_work = models.TextField(blank=True)
+    lecture_notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['topic']
+        verbose_name = 'Topic note'
+        verbose_name_plural = 'Topic notes'
+
+    def __str__(self):
+        return f"Note: {self.topic}"
+
+
+class TopicLearningSession(models.Model):
+    """
+    Tracks a pupil's mastery-learning journey through their weak topics.
+    Created automatically when a pupil finishes an adaptive session with weak topics.
+    Implements Bloom's Mastery Learning (1968): the pupil must demonstrate mastery
+    of one topic before advancing to the next.
+    Topics are ordered easiest-to-fix first (Bandura, 1997 — self-efficacy through
+    early success).
+    """
+    STATUS_CHOICES = [
+        ('reading',  'Reading lecture note'),
+        ('testing',  'Taking mini-test'),
+        ('complete', 'All weak topics mastered'),
+    ]
+
+    pupil          = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                       related_name='learning_sessions')
+    subject        = models.ForeignKey(Subject, on_delete=models.CASCADE)
+    weak_topics    = models.JSONField(default=list)
+    current_index  = models.PositiveIntegerField(default=0)
+    status         = models.CharField(max_length=20, choices=STATUS_CHOICES, default='reading')
+    wrong_question = models.ForeignKey(CEQuestion, on_delete=models.SET_NULL,
+                                       null=True, blank=True)
+    generated_note = models.TextField(blank=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def current_topic(self):
+        if self.current_index < len(self.weak_topics):
+            return self.weak_topics[self.current_index]
+        return None
+
+    def advance(self):
+        self.current_index += 1
+        if self.current_index >= len(self.weak_topics):
+            self.status = 'complete'
+        else:
+            self.status = 'reading'
+        self.generated_note = ''
+        self.wrong_question = None
+        self.save()
+        return self.status != 'complete'
+
+    def __str__(self):
+        return f"{self.pupil.username} — {self.subject.name} mastery session"
+
+
+class MiniTestResult(models.Model):
+    """
+    Records each mini-test attempt within a TopicLearningSession.
+    The mastery engine uses three signals to decide readiness to advance
+    (Bloom, 1968; Lord, 1980):
+      1. Accuracy >= 60%
+      2. At least 3 consecutive correct answers
+      3. At least 1 Medium-level question correct
+    """
+    session        = models.ForeignKey(TopicLearningSession, on_delete=models.CASCADE,
+                                       related_name='mini_test_results')
+    topic          = models.CharField(max_length=100)
+    attempt_number = models.PositiveIntegerField(default=1)
+    answers        = models.JSONField(default=list)
+    score          = models.PositiveIntegerField(default=0)
+    total          = models.PositiveIntegerField(default=5)
+    passed         = models.BooleanField(default=False)
+    taken_at       = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['attempt_number']
+
+    @property
+    def accuracy(self):
+        return round(self.score / self.total * 100) if self.total else 0
+
+    def __str__(self):
+        return f"{self.session.pupil.username} | {self.topic} | attempt {self.attempt_number} | {'PASS' if self.passed else 'FAIL'}"
