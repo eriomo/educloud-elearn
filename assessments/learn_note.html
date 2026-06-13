@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block title %}Study Note — {{ topic }}{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto py-8 px-4">
+
+  <div class="mb-5">
+    <div class="flex justify-between text-sm text-gray-500 mb-1">
+      <span>Weak Topic {{ topic_number }} of {{ total_topics }}</span>
+      <span>{{ subject.name }}</span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-2">
+      <div class="bg-purple-600 h-2 rounded-full" style="width:{% widthratio topic_number total_topics 100 %}%"></div>
+    </div>
+  </div>
+
+  {% if attempt > 1 %}
+  <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4 text-sm text-yellow-800">
+    This is attempt {{ attempt }}. A new explanation has been prepared — read it carefully before taking the test again.
+  </div>
+  {% endif %}
+
+  <div class="bg-white rounded-2xl shadow p-6 mb-6">
+    <div class="flex items-center gap-3 mb-5">
+      <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-2xl">📖</div>
+      <div>
+        <h1 class="text-xl font-bold text-gray-800">{{ topic }}</h1>
+        <p class="text-xs text-gray-400">Read this carefully before your mini-test</p>
+      </div>
+    </div>
+    <div class="text-gray-800 leading-relaxed whitespace-pre-line text-sm">{{ note }}</div>
+  </div>
+
+  <div class="text-center">
+    <a href="{% url 'learn_test' session.id %}"
+       class="inline-block bg-purple-600 text-white px-10 py-3 rounded-xl font-bold text-lg hover:bg-purple-700 transition-colors">
+      I am ready — Start Mini-Test
+    </a>
+    <p class="text-xs text-gray-400 mt-3">
+      5 questions · Need 60% AND 3 correct in a row AND 1 standard-level question to advance
+    </p>
+  </div>
+
+</div>
+{% endblock %}
