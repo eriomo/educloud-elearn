@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Mini-Test — {{ topic }}{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto py-8 px-4">
+
+  <div class="mb-5">
+    <div class="flex justify-between text-sm text-gray-500 mb-1">
+      <span>Topic {{ topic_number }} of {{ total_topics }} — Mini-Test (Attempt {{ attempt }})</span>
+      <span>{{ subject.name }}</span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-2">
+      <div class="bg-purple-600 h-2 rounded-full" style="width:{% widthratio topic_number total_topics 100 %}%"></div>
+    </div>
+  </div>
+
+  <div class="bg-purple-50 border border-purple-200 rounded-xl p-3 mb-5 text-sm text-purple-800">
+    <strong>{{ topic }}</strong> — 5 questions. Score 60%, get 3 in a row, and answer 1 standard-level question correctly to advance.
+  </div>
+
+  <form method="post" action="{% url 'learn_answer' session.id %}">
+    {% csrf_token %}
+    {% for item in questions %}
+    <div class="bg-white rounded-xl shadow-sm p-5 mb-4">
+      <p class="font-medium text-gray-900 mb-4">
+        <span class="text-purple-600 font-bold">Q{{ forloop.counter }}.</span> {{ item.obj.question_text }}
+      </p>
+      <div class="space-y-2">
+        {% for value, label in item.choices %}
+        <label class="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-2.5 cursor-pointer hover:border-purple-400 hover:bg-purple-50 transition-colors">
+          <input type="radio" name="answer_{{ item.obj.id }}" value="{{ value }}" class="accent-purple-600" required>
+          <span class="text-gray-800"><strong>{{ value }}.</strong> {{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+    <div class="text-center mt-4">
+      <button type="submit" class="bg-purple-600 text-white px-10 py-3 rounded-xl font-bold text-lg hover:bg-purple-700">
+        Submit Mini-Test
+      </button>
+    </div>
+  </form>
+
+</div>
+{% endblock %}
