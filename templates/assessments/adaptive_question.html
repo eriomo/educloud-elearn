@@ -1,0 +1,56 @@
+{% extends 'base.html' %}{% block title %}Adaptive Practice{% endblock %}{% block content %}
+<div class="max-w-2xl">
+  <div class="flex justify-between items-center mb-2">
+    <span class="font-semibold text-brand-700">Adaptive Practice &mdash; {{ subject.name }}</span>
+    <span class="text-sm text-gray-500">Question {{ qnum }} of {{ total }}</span>
+  </div>
+
+  <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
+    <div class="bg-brand-700 h-2 rounded-full" style="width: {{ progress_pct }}%;"></div>
+  </div>
+
+  <div class="mb-4">
+    {% if difficulty == 'easy' %}
+      <span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700">Easy question</span>
+    {% elif difficulty == 'hard' %}
+      <span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-brand-700 text-white">Hard question</span>
+    {% else %}
+      <span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-700">Medium question</span>
+    {% endif %}
+
+    {% if last_correct is not None %}
+      {% if last_correct %}
+        <span class="ml-2 text-green-600 font-semibold text-sm">&#10003; Correct! Moving up a notch.</span>
+      {% else %}
+        <span class="ml-2 text-orange-600 font-semibold text-sm">&#10007; Not quite. Easing back a little.</span>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm p-6">
+    <h2 class="text-lg font-semibold text-gray-800 mb-4">{{ question.question_text }}</h2>
+
+    <form method="post" action="{% url 'adaptive_answer' subject.id %}" class="space-y-3">
+      {% csrf_token %}
+      <input type="hidden" name="question_id" value="{{ question.id }}">
+
+      <label class="flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50">
+        <input type="radio" name="answer" value="A" required> <span>(A) {{ question.option_a }}</span>
+      </label>
+      <label class="flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50">
+        <input type="radio" name="answer" value="B"> <span>(B) {{ question.option_b }}</span>
+      </label>
+      <label class="flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50">
+        <input type="radio" name="answer" value="C"> <span>(C) {{ question.option_c }}</span>
+      </label>
+      <label class="flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50">
+        <input type="radio" name="answer" value="D"> <span>(D) {{ question.option_d }}</span>
+      </label>
+
+      <button type="submit" class="bg-green-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-green-700">
+        Submit Answer
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
