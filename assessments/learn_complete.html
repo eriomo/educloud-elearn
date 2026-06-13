@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}All Topics Mastered!{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto py-12 px-4 text-center">
+
+  <div class="text-6xl mb-4">🎓</div>
+  <h1 class="text-2xl font-bold text-gray-800 mb-2">Outstanding Work!</h1>
+  <p class="text-gray-600 mb-6">
+    You have worked through all your weak topics in <strong>{{ session.subject.name }}</strong>
+    and passed the mastery test for each one.
+  </p>
+
+  <div class="bg-green-50 border border-green-200 rounded-xl p-6 mb-8">
+    <h2 class="font-semibold text-green-800 mb-3">Topics You Have Mastered</h2>
+    <div class="flex flex-wrap gap-2 justify-center">
+      {% for topic in session.weak_topics %}
+      <span class="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">✓ {{ topic }}</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <p class="text-sm text-gray-500 mb-6">
+    Your progress report has been updated. Keep practising to stay sharp before the Common Entrance Examination.
+  </p>
+
+  <div class="flex flex-wrap gap-3 justify-center">
+    <a href="{% url 'adaptive_home' %}" class="bg-purple-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-purple-700">Practice More</a>
+    <a href="{% url 'student_report' %}" class="bg-gray-100 text-gray-700 px-6 py-2 rounded-lg font-semibold hover:bg-gray-200">My Progress Report</a>
+  </div>
+
+</div>
+{% endblock %}
