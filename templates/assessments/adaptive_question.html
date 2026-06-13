@@ -1,56 +1,55 @@
-{% extends 'base.html' %}{% block title %}Adaptive Practice{% endblock %}{% block content %}
-<div class="max-w-2xl">
-  <div class="flex justify-between items-center mb-2">
-    <span class="font-semibold text-brand-700">Adaptive Practice &mdash; {{ subject.name }}</span>
-    <span class="text-sm text-gray-500">Question {{ qnum }} of {{ total }}</span>
-  </div>
+{% extends 'base.html' %}
+{% block title %}Adaptive Practice — Question {{ session.questions_answered|add:1 }}{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto py-8 px-4">
 
-  <div class="w-full bg-gray-200 rounded-full h-2 mb-4">
-    <div class="bg-brand-700 h-2 rounded-full" style="width: {{ progress_pct }}%;"></div>
-  </div>
-
+  <!-- Progress bar -->
   <div class="mb-4">
-    {% if difficulty == 'easy' %}
-      <span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700">Easy question</span>
-    {% elif difficulty == 'hard' %}
-      <span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-brand-700 text-white">Hard question</span>
-    {% else %}
-      <span class="inline-block px-3 py-1 rounded-full text-xs font-bold bg-orange-50 text-orange-700">Medium question</span>
-    {% endif %}
-
-    {% if last_correct is not None %}
-      {% if last_correct %}
-        <span class="ml-2 text-green-600 font-semibold text-sm">&#10003; Correct! Moving up a notch.</span>
-      {% else %}
-        <span class="ml-2 text-orange-600 font-semibold text-sm">&#10007; Not quite. Easing back a little.</span>
-      {% endif %}
-    {% endif %}
+    <div class="flex justify-between text-sm text-gray-600 mb-1">
+      <span>Question {{ session.questions_answered|add:1 }} of 15</span>
+      <span>Score: {{ session.score }} correct</span>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-2">
+      <div class="bg-brand-600 h-2 rounded-full transition-all"
+           style="width: {% widthratio session.questions_answered 15 100 %}%"></div>
+    </div>
   </div>
 
-  <div class="bg-white rounded-xl shadow-sm p-6">
-    <h2 class="text-lg font-semibold text-gray-800 mb-4">{{ question.question_text }}</h2>
+  <!-- Difficulty badge -->
+  <div class="mb-4">
+    {% if current_difficulty == 'easy' %}
+      <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full">Foundation Level</span>
+    {% elif current_difficulty == 'hard' %}
+      <span class="inline-block bg-red-100 text-red-800 text-xs font-semibold px-3 py-1 rounded-full">Advanced Level</span>
+    {% else %}
+      <span class="inline-block bg-yellow-100 text-yellow-800 text-xs font-semibold px-3 py-1 rounded-full">Standard Level</span>
+    {% endif %}
+    {% if question.exam_year %}<span class="ml-2 text-xs text-gray-400">({{ question.exam_year }})</span>{% endif %}
+  </div>
 
-    <form method="post" action="{% url 'adaptive_answer' subject.id %}" class="space-y-3">
+  <!-- Question card -->
+  <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+    <p class="text-gray-900 text-base font-medium leading-relaxed mb-6">{{ question.question_text }}</p>
+
+    <form method="post">
       {% csrf_token %}
       <input type="hidden" name="question_id" value="{{ question.id }}">
-
-      <label class="flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50">
-        <input type="radio" name="answer" value="A" required> <span>(A) {{ question.option_a }}</span>
-      </label>
-      <label class="flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50">
-        <input type="radio" name="answer" value="B"> <span>(B) {{ question.option_b }}</span>
-      </label>
-      <label class="flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50">
-        <input type="radio" name="answer" value="C"> <span>(C) {{ question.option_c }}</span>
-      </label>
-      <label class="flex items-center gap-3 border rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50">
-        <input type="radio" name="answer" value="D"> <span>(D) {{ question.option_d }}</span>
-      </label>
-
-      <button type="submit" class="bg-green-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-green-700">
-        Submit Answer
-      </button>
+      <div class="space-y-3">
+        {% for value, label in choices %}
+        <label class="flex items-start gap-3 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:border-brand-400 hover:bg-brand-50 transition-colors">
+          <input type="radio" name="answer" value="{{ value }}" class="mt-0.5 accent-brand-600" required>
+          <span class="text-gray-800"><strong>{{ value }}.</strong> {{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <div class="mt-6 flex justify-end">
+        <button type="submit"
+                class="bg-green-600 text-white px-8 py-2 rounded-lg font-semibold hover:bg-green-700 transition-colors">
+          Submit Answer
+        </button>
+      </div>
     </form>
   </div>
+
 </div>
 {% endblock %}
